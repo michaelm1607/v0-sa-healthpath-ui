@@ -11,29 +11,29 @@ export function ProgressStepper({ currentStep }: ProgressStepperProps) {
 
   return (
     <nav aria-label="Simulation progress" className="w-full">
-      <ol className="flex items-center">
+      <ol className="flex items-center justify-between">
         {STEPS.map((step, index) => {
           const isDone = index < currentIndex;
           const isActive = index === currentIndex;
 
           return (
             <li key={step} className="flex items-center flex-1 last:flex-none">
-              <div className="flex flex-col items-center gap-1">
+              <div className="flex flex-col items-center gap-1.5">
                 <span
                   className={cn(
-                    "w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors",
+                    "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all",
                     isDone && "bg-accent border-accent text-white",
-                    isActive && "bg-primary border-primary text-primary-foreground",
+                    isActive && "bg-primary border-primary text-primary-foreground shadow-sm",
                     !isDone && !isActive && "bg-card border-border text-muted-foreground"
                   )}
                   aria-current={isActive ? "step" : undefined}
                 >
-                  {isDone ? <Check className="w-3.5 h-3.5" aria-hidden="true" /> : index + 1}
+                  {isDone ? <Check className="w-4 h-4" aria-hidden="true" /> : index + 1}
                 </span>
                 <span
                   className={cn(
-                    "text-[10px] font-medium whitespace-nowrap hidden sm:block",
-                    isActive ? "text-primary font-semibold" : isDone ? "text-accent" : "text-muted-foreground"
+                    "text-[10px] font-medium whitespace-nowrap text-center hidden sm:block max-w-[70px] leading-tight",
+                    isActive ? "text-foreground font-semibold" : isDone ? "text-accent" : "text-muted-foreground"
                   )}
                 >
                   {step}
@@ -41,7 +41,10 @@ export function ProgressStepper({ currentStep }: ProgressStepperProps) {
               </div>
               {index < STEPS.length - 1 && (
                 <div
-                  className={cn("flex-1 h-0.5 mx-1 mb-3 sm:mb-4", index < currentIndex ? "bg-accent" : "bg-border")}
+                  className={cn(
+                    "flex-1 h-0.5 mx-2 mb-4 sm:mb-5 rounded-full transition-colors",
+                    index < currentIndex ? "bg-accent" : "bg-border"
+                  )}
                   aria-hidden="true"
                 />
               )}
