@@ -98,12 +98,8 @@ export const scenarios: Scenario[] = [
         "Insulin storage risk in a home without air conditioning",
         "Language access need for a Spanish-primary resident",
       ],
-      // NOTE: 'missed' is computed dynamically in the feedback page from selected vs correct answer keys.
-      // This array is used only as a fallback if dynamic computation is unavailable.
-      missed: [
-        "Language access – Spanish-primary communication requires bilingual outreach",
-        "Medication storage – insulin requires refrigeration, at risk in a hot home",
-      ],
+      // 'missed' is computed dynamically in the feedback page — this array is never used.
+      missed: [],
       strongerPathway:
         "A same-day wellness check through SA Area Agency on Aging coordinated with Metro Health Heat Emergency resources, CPS Energy cooling assistance, and bilingual Spanish-language follow-up.",
       whyItMatters:

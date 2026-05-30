@@ -74,7 +74,8 @@ function calcScore(scenario: (typeof scenarios)[0], answers: { q: string[]; r: s
   const earnedPoints = riskRecognition + urgencyJudgment + referralFit + communicationLanguage + safetyAwareness;
   const overall = Math.min(100, Math.round((earnedPoints / maxPoints) * 100));
 
-  // Compute missed items dynamically from unselected correct risk factors and referral pathways
+  // Compute missed items dynamically from unselected correct risk factors and referral pathways.
+  // Never fall back to hardcoded scenario.feedback.missed — if nothing was missed, the list is empty.
   const missedRisks = scenario.riskFactors
     .filter((r) => r.correct && !answers.r.includes(r.id))
     .map((r) => `Risk factor not identified: ${r.label}`);
@@ -82,7 +83,9 @@ function calcScore(scenario: (typeof scenarios)[0], answers: { q: string[]; r: s
     .filter((p) => p.correct && !answers.p.includes(p.id))
     .map((p) => `Referral not selected: ${p.label}`);
   const dynamicMissed = [...missedRisks, ...missedPathways];
-  const missed = dynamicMissed.length > 0 ? dynamicMissed : scenario.feedback.missed;
+
+  // Consistency rule: if overall = 100, the missed panel must be empty regardless of any other logic.
+  const missed = overall === 100 ? [] : dynamicMissed;
 
   return {
     overall,
@@ -267,7 +270,9 @@ function FeedbackPanel({
         <h3 className="font-semibold text-sm text-foreground">{title}</h3>
       </div>
       <ul className="flex flex-col gap-2">
-        {items.map((item) => (
+        {items.length === 0 ? (
+          <li className="text-sm text-foreground opacity-60 italic">No missed items. Strong performance across all decision areas.</li>
+        ) : items.map((item) => (
           <li key={item} className="flex items-start gap-2 text-sm text-foreground">
             <span className={cn("w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0", variant === "positive" ? "bg-green-600" : "bg-red-500")} aria-hidden="true" />
             {item}
