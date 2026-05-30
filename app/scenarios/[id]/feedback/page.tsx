@@ -30,19 +30,31 @@ function calcScore(scenario: (typeof scenarios)[0], answers: { q: string[]; r: s
     : Math.round(categoryScores.urgencyJudgment * 0.4);
   const referralFit = Math.round((pHits / Math.max(correctP.length, 1)) * categoryScores.referralFit);
 
-  // Language/Communication: check if language-access risk factor AND/OR bilingual pathway selected
+  // Language/Communication: determine if this scenario has a language-access requirement at all.
+  // A scenario has a language barrier if ANY correct risk factor or correct referral pathway
+  // signals bilingual/language/interpreter need. English-primary scenarios with no such signals
+  // award full credit when the user selects family-centered service pathways correctly.
   const languageRiskIds = scenario.riskFactors
-    .filter((r) => r.correct && /language|communication|bilingual/i.test(r.label))
+    .filter((r) => r.correct && /language|communication|bilingual|interpreter/i.test(r.label))
     .map((r) => r.id);
   const languagePathwayIds = scenario.referralPathways
     .filter((p) => p.correct && /bilingual|language|interpreter/i.test(p.label))
     .map((p) => p.id);
-  const languageHit =
-    languageRiskIds.some((id) => answers.r.includes(id)) ||
-    languagePathwayIds.some((id) => answers.p.includes(id));
-  const communicationLanguage = languageHit
-    ? categoryScores.communicationLanguage
-    : Math.round(categoryScores.communicationLanguage * 0.3);
+  const scenarioHasLanguageBarrier = languageRiskIds.length > 0 || languagePathwayIds.length > 0;
+
+  let communicationLanguage: number;
+  if (!scenarioHasLanguageBarrier) {
+    // No language barrier in this scenario — award full credit proportional to referral pathway selection.
+    // This correctly handles English-primary cases where communication = appropriate service linkage.
+    communicationLanguage = Math.round((pHits / Math.max(correctP.length, 1)) * categoryScores.communicationLanguage);
+  } else {
+    const languageHit =
+      languageRiskIds.some((id) => answers.r.includes(id)) ||
+      languagePathwayIds.some((id) => answers.p.includes(id));
+    communicationLanguage = languageHit
+      ? categoryScores.communicationLanguage
+      : Math.round(categoryScores.communicationLanguage * 0.3);
+  }
 
   // Safety: check insulin/medication storage risk
   const safetyRiskIds = scenario.riskFactors
