@@ -5,14 +5,28 @@ import { SiteFooter } from "@/components/site-footer";
 import { SaveResult } from "@/components/save-result";
 import { scenarios } from "@/lib/data";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, XCircle, ArrowRight, RotateCcw, TrendingUp } from "lucide-react";
+import { CheckCircle2, XCircle, ArrowRight, RotateCcw, TrendingUp, AlertCircle } from "lucide-react";
 
 interface PageProps {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ q?: string; r?: string; u?: string; p?: string }>;
 }
 
-function calcScore(scenario: (typeof scenarios)[0], answers: { q: string[]; r: string[]; u: string; p: string[] }) {
+interface FeedbackItem {
+  type: "missed-risk" | "unsupported-risk" | "missed-pathway" | "unsupported-pathway" | "missed-question" | "wrong-urgency";
+  label: string;
+  rationale: string;
+  correctLabel?: string; // for wrong-urgency: the correct value
+}
+
+function calcScore(
+  scenario: (typeof scenarios)[0],
+  answers: { q: string[]; r: string[]; u: string; p: string[] }
+): {
+  overall: number;
+  feedbackItems: FeedbackItem[];
+  categories: { label: string; score: number; max: number }[];
+} {
   const correctQ = scenario.screeningQuestions.filter((q) => q.correct).map((q) => q.id);
   const qHits = answers.q.filter((id) => correctQ.includes(id)).length;
 
@@ -22,18 +36,17 @@ function calcScore(scenario: (typeof scenarios)[0], answers: { q: string[]; r: s
   const correctP = scenario.referralPathways.filter((p) => p.correct).map((p) => p.id);
   const pHits = answers.p.filter((id) => correctP.includes(id)).length;
 
-  // Use categoryScores as max points per category and compute proportional earned scores
   const { categoryScores } = scenario;
+
+  // Scoring
   const riskRecognition = Math.round((rHits / Math.max(correctR.length, 1)) * categoryScores.riskRecognition);
-  const urgencyJudgment = answers.u === scenario.correctUrgency
-    ? categoryScores.urgencyJudgment
-    : Math.round(categoryScores.urgencyJudgment * 0.4);
+  const urgencyJudgment =
+    answers.u === scenario.correctUrgency
+      ? categoryScores.urgencyJudgment
+      : Math.round(categoryScores.urgencyJudgment * 0.4);
   const referralFit = Math.round((pHits / Math.max(correctP.length, 1)) * categoryScores.referralFit);
 
-  // Language/Communication: determine if this scenario has a language-access requirement at all.
-  // A scenario has a language barrier if ANY correct risk factor or correct referral pathway
-  // signals bilingual/language/interpreter need. English-primary scenarios with no such signals
-  // award full credit when the user selects family-centered service pathways correctly.
+  // Communication/Language
   const languageRiskIds = scenario.riskFactors
     .filter((r) => r.correct && /language|communication|bilingual|interpreter/i.test(r.label))
     .map((r) => r.id);
@@ -44,9 +57,9 @@ function calcScore(scenario: (typeof scenarios)[0], answers: { q: string[]; r: s
 
   let communicationLanguage: number;
   if (!scenarioHasLanguageBarrier) {
-    // No language barrier in this scenario — award full credit proportional to referral pathway selection.
-    // This correctly handles English-primary cases where communication = appropriate service linkage.
-    communicationLanguage = Math.round((pHits / Math.max(correctP.length, 1)) * categoryScores.communicationLanguage);
+    communicationLanguage = Math.round(
+      (pHits / Math.max(correctP.length, 1)) * categoryScores.communicationLanguage
+    );
   } else {
     const languageHit =
       languageRiskIds.some((id) => answers.r.includes(id)) ||
@@ -56,11 +69,12 @@ function calcScore(scenario: (typeof scenarios)[0], answers: { q: string[]; r: s
       : Math.round(categoryScores.communicationLanguage * 0.3);
   }
 
-  // Safety: check insulin/medication storage risk
+  // Safety
   const safetyRiskIds = scenario.riskFactors
     .filter((r) => r.correct && /insulin|medication|storage|safety|suicid|firearm|lethal/i.test(r.label))
     .map((r) => r.id);
-  const safetyHit = safetyRiskIds.length === 0 || safetyRiskIds.some((id) => answers.r.includes(id));
+  const safetyHit =
+    safetyRiskIds.length === 0 || safetyRiskIds.some((id) => answers.r.includes(id));
   const safetyAwareness = safetyHit
     ? categoryScores.safetyAwareness
     : Math.round(categoryScores.safetyAwareness * 0.4);
@@ -71,25 +85,109 @@ function calcScore(scenario: (typeof scenarios)[0], answers: { q: string[]; r: s
     categoryScores.referralFit +
     categoryScores.communicationLanguage +
     categoryScores.safetyAwareness;
-  const earnedPoints = riskRecognition + urgencyJudgment + referralFit + communicationLanguage + safetyAwareness;
+  const earnedPoints =
+    riskRecognition + urgencyJudgment + referralFit + communicationLanguage + safetyAwareness;
   const overall = Math.min(100, Math.round((earnedPoints / maxPoints) * 100));
 
-  // Compute missed items dynamically from unselected correct risk factors and referral pathways.
-  // Never fall back to hardcoded scenario.feedback.missed — if nothing was missed, the list is empty.
-  const missedRisks = scenario.riskFactors
-    .filter((r) => r.correct && !answers.r.includes(r.id))
-    .map((r) => `Risk factor not identified: ${r.label}`);
-  const missedPathways = scenario.referralPathways
-    .filter((p) => p.correct && !answers.p.includes(p.id))
-    .map((p) => `Referral not selected: ${p.label}`);
-  const dynamicMissed = [...missedRisks, ...missedPathways];
+  // Build rich feedback items
+  const feedbackItems: FeedbackItem[] = [];
 
-  // Consistency rule: if overall = 100, the missed panel must be empty regardless of any other logic.
-  const missed = overall === 100 ? [] : dynamicMissed;
+  if (overall < 100) {
+    // Missed screening questions (correct ones not selected)
+    scenario.screeningQuestions
+      .filter((q) => q.correct && !answers.q.includes(q.id))
+      .forEach((q) => {
+        feedbackItems.push({
+          type: "missed-question",
+          label: `You should have asked: "${q.text}"`,
+          rationale: q.rationale ?? "This question directly addresses a key risk identified in the case.",
+        });
+      });
+
+    // Unsupported screening questions (incorrect ones selected)
+    scenario.screeningQuestions
+      .filter((q) => !q.correct && answers.q.includes(q.id))
+      .forEach((q) => {
+        const betterQ = scenario.screeningQuestions.find((s) => s.correct && !answers.q.includes(s.id));
+        feedbackItems.push({
+          type: "missed-question",
+          label: `Less relevant question selected: "${q.text}"`,
+          rationale:
+            (q.rationale ?? "This question is not directly relevant to the primary risks in this case.") +
+            (betterQ ? ` A stronger choice would have been: "${betterQ.text}"` : ""),
+        });
+      });
+
+    // Missed risk factors (correct ones not selected)
+    scenario.riskFactors
+      .filter((r) => r.correct && !answers.r.includes(r.id))
+      .forEach((r) => {
+        feedbackItems.push({
+          type: "missed-risk",
+          label: `Missed risk factor: ${r.label}`,
+          rationale:
+            r.rationale
+              ? `Why it matters: ${r.rationale}`
+              : "This risk factor is directly supported by the case facts and affects the appropriate intervention.",
+        });
+      });
+
+    // Unsupported risk factors (incorrect ones selected)
+    scenario.riskFactors
+      .filter((r) => !r.correct && answers.r.includes(r.id))
+      .forEach((r) => {
+        feedbackItems.push({
+          type: "unsupported-risk",
+          label: `Unsupported risk factor selected: ${r.label}`,
+          rationale:
+            r.rationale
+              ? r.rationale
+              : "This risk factor is not supported by the case facts. Selecting unsupported risks weakens the care plan.",
+        });
+      });
+
+    // Wrong urgency
+    if (answers.u && answers.u !== scenario.correctUrgency) {
+      feedbackItems.push({
+        type: "wrong-urgency",
+        label: `Urgency selected: ${answers.u} — Correct urgency: ${scenario.correctUrgency}`,
+        rationale: `Why: ${scenario.urgencyRationale}`,
+        correctLabel: scenario.correctUrgency,
+      });
+    }
+
+    // Missed referral pathways (correct ones not selected)
+    scenario.referralPathways
+      .filter((p) => p.correct && !answers.p.includes(p.id))
+      .forEach((p) => {
+        feedbackItems.push({
+          type: "missed-pathway",
+          label: `Missed referral pathway: ${p.label}`,
+          rationale:
+            p.rationale
+              ? `Why it fits: ${p.rationale}`
+              : "This pathway is directly supported by the case facts.",
+        });
+      });
+
+    // Unsupported referral pathways (incorrect ones selected)
+    scenario.referralPathways
+      .filter((p) => !p.correct && answers.p.includes(p.id))
+      .forEach((p) => {
+        const betterP = scenario.referralPathways.find((r) => r.correct && !answers.p.includes(r.id));
+        feedbackItems.push({
+          type: "unsupported-pathway",
+          label: `Less appropriate pathway selected: ${p.label}`,
+          rationale:
+            (p.rationale ?? "This referral is not supported by the case facts.") +
+            (betterP ? ` A stronger choice would have been: ${betterP.label}.` : ""),
+        });
+      });
+  }
 
   return {
     overall,
-    missed,
+    feedbackItems,
     categories: [
       { label: "Risk Recognition", score: riskRecognition, max: categoryScores.riskRecognition },
       { label: "Urgency Judgment", score: urgencyJudgment, max: categoryScores.urgencyJudgment },
@@ -113,19 +211,20 @@ export default async function FeedbackPage({ params, searchParams }: PageProps) 
     p: sp.p ? sp.p.split(",").filter(Boolean) : [],
   };
 
-  const { overall, categories, missed } = calcScore(scenario, answers);
+  const { overall, categories, feedbackItems } = calcScore(scenario, answers);
   const { feedback } = scenario;
 
   const scoreColor =
-    overall >= 80 ? "text-green-700 bg-green-50 border-green-200"
-    : overall >= 60 ? "text-yellow-700 bg-yellow-50 border-yellow-200"
-    : "text-red-700 bg-red-50 border-red-200";
+    overall >= 80
+      ? "text-green-700 bg-green-50 border-green-200"
+      : overall >= 60
+      ? "text-yellow-700 bg-yellow-50 border-yellow-200"
+      : "text-red-700 bg-red-50 border-red-200";
 
   return (
     <div className="min-h-screen flex flex-col">
       <SiteHeader />
       <main className="flex-1 bg-background py-10 px-4">
-        {/* Persist result to localStorage on mount */}
         <SaveResult
           scenarioId={scenario.id}
           scenarioTitle={scenario.title}
@@ -135,14 +234,21 @@ export default async function FeedbackPage({ params, searchParams }: PageProps) 
         <div className="max-w-3xl mx-auto flex flex-col gap-8">
           {/* Header */}
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-1">Score & Feedback</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-1">
+              Score & Feedback
+            </p>
             <h1 className="font-serif text-2xl sm:text-3xl font-bold text-foreground text-balance">
               {scenario.title}
             </h1>
           </div>
 
           {/* Overall score */}
-          <div className={cn("border rounded-xl p-6 flex flex-col sm:flex-row items-center gap-6", scoreColor)}>
+          <div
+            className={cn(
+              "border rounded-xl p-6 flex flex-col sm:flex-row items-center gap-6",
+              scoreColor
+            )}
+          >
             <div className="flex flex-col items-center justify-center w-28 h-28 rounded-full border-4 border-current flex-shrink-0">
               <span className="text-3xl font-bold font-serif">{overall}</span>
               <span className="text-xs font-semibold opacity-70">/ 100</span>
@@ -169,13 +275,27 @@ export default async function FeedbackPage({ params, searchParams }: PageProps) 
                 <div key={label}>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-sm font-medium text-foreground">{label}</span>
-                    <span className="text-sm font-bold text-foreground">{score}<span className="text-muted-foreground font-normal text-xs">/{max}</span></span>
+                    <span className="text-sm font-bold text-foreground">
+                      {score}
+                      <span className="text-muted-foreground font-normal text-xs">/{max}</span>
+                    </span>
                   </div>
-                  <div className="w-full bg-secondary rounded-full h-2.5 overflow-hidden" role="progressbar" aria-valuenow={score} aria-valuemin={0} aria-valuemax={max} aria-label={label}>
+                  <div
+                    className="w-full bg-secondary rounded-full h-2.5 overflow-hidden"
+                    role="progressbar"
+                    aria-valuenow={score}
+                    aria-valuemin={0}
+                    aria-valuemax={max}
+                    aria-label={label}
+                  >
                     <div
                       className={cn(
                         "h-full rounded-full transition-all",
-                        score / max >= 0.8 ? "bg-accent" : score / max >= 0.6 ? "bg-yellow-400" : "bg-red-400"
+                        score / max >= 0.8
+                          ? "bg-accent"
+                          : score / max >= 0.6
+                          ? "bg-yellow-400"
+                          : "bg-red-400"
                       )}
                       style={{ width: `${Math.round((score / max) * 100)}%` }}
                     />
@@ -187,27 +307,77 @@ export default async function FeedbackPage({ params, searchParams }: PageProps) 
 
           {/* Feedback panels */}
           <div className="grid sm:grid-cols-2 gap-4">
-            <FeedbackPanel
-              icon={<CheckCircle2 className="w-5 h-5 text-green-600" />}
-              title="What you recognized"
-              items={feedback.recognized}
-              variant="positive"
-            />
-            <FeedbackPanel
-              icon={<XCircle className="w-5 h-5 text-red-500" />}
-              title="What you missed"
-              items={missed}
-              variant="negative"
-            />
+            {/* What you recognized */}
+            <div className="rounded-xl border bg-green-50 border-green-200 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <CheckCircle2 className="w-5 h-5 text-green-600" aria-hidden="true" />
+                <h3 className="font-semibold text-sm text-foreground">What you recognized</h3>
+              </div>
+              <ul className="flex flex-col gap-2">
+                {feedback.recognized.map((item) => (
+                  <li key={item} className="flex items-start gap-2 text-sm text-foreground">
+                    <span
+                      className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 bg-green-600"
+                      aria-hidden="true"
+                    />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* What you missed */}
+            <div className="rounded-xl border bg-red-50 border-red-200 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <XCircle className="w-5 h-5 text-red-500" aria-hidden="true" />
+                <h3 className="font-semibold text-sm text-foreground">What you missed</h3>
+              </div>
+              {feedbackItems.length === 0 ? (
+                <p className="text-sm text-foreground opacity-60 italic">
+                  No missed items. Strong performance across all decision areas.
+                </p>
+              ) : (
+                <ul className="flex flex-col gap-3">
+                  {feedbackItems.map((item, i) => (
+                    <li key={i} className="flex flex-col gap-0.5">
+                      <span className="flex items-start gap-2 text-sm font-medium text-foreground">
+                        <AlertCircle
+                          className={cn(
+                            "w-4 h-4 mt-0.5 flex-shrink-0",
+                            item.type === "wrong-urgency"
+                              ? "text-yellow-600"
+                              : item.type.startsWith("unsupported")
+                              ? "text-orange-500"
+                              : "text-red-500"
+                          )}
+                          aria-hidden="true"
+                        />
+                        {item.label}
+                      </span>
+                      <p className="text-xs text-muted-foreground leading-relaxed pl-6">
+                        {item.rationale}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
 
           {/* Stronger pathway */}
           <div className="bg-card border border-border rounded-xl p-6">
             <div className="flex items-start gap-3">
-              <TrendingUp className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" aria-hidden="true" />
+              <TrendingUp
+                className="w-5 h-5 text-primary mt-0.5 flex-shrink-0"
+                aria-hidden="true"
+              />
               <div>
-                <h3 className="font-serif font-semibold text-base text-foreground mb-2">Stronger Pathway</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">{feedback.strongerPathway}</p>
+                <h3 className="font-serif font-semibold text-base text-foreground mb-2">
+                  Stronger Pathway
+                </h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {feedback.strongerPathway}
+                </p>
               </div>
             </div>
           </div>
@@ -215,7 +385,9 @@ export default async function FeedbackPage({ params, searchParams }: PageProps) 
           {/* Why it matters */}
           <div className="bg-primary text-primary-foreground rounded-xl p-6">
             <h3 className="font-serif font-semibold text-base mb-2">Why It Matters</h3>
-            <p className="text-sm text-primary-foreground/80 leading-relaxed">{feedback.whyItMatters}</p>
+            <p className="text-sm text-primary-foreground/80 leading-relaxed">
+              {feedback.whyItMatters}
+            </p>
           </div>
 
           {/* Actions */}
@@ -245,40 +417,6 @@ export default async function FeedbackPage({ params, searchParams }: PageProps) 
         </div>
       </main>
       <SiteFooter />
-    </div>
-  );
-}
-
-function FeedbackPanel({
-  icon,
-  title,
-  items,
-  variant,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  items: string[];
-  variant: "positive" | "negative";
-}) {
-  return (
-    <div className={cn(
-      "rounded-xl border p-5",
-      variant === "positive" ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"
-    )}>
-      <div className="flex items-center gap-2 mb-3">
-        {icon}
-        <h3 className="font-semibold text-sm text-foreground">{title}</h3>
-      </div>
-      <ul className="flex flex-col gap-2">
-        {items.length === 0 ? (
-          <li className="text-sm text-foreground opacity-60 italic">No missed items. Strong performance across all decision areas.</li>
-        ) : items.map((item) => (
-          <li key={item} className="flex items-start gap-2 text-sm text-foreground">
-            <span className={cn("w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0", variant === "positive" ? "bg-green-600" : "bg-red-500")} aria-hidden="true" />
-            {item}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
