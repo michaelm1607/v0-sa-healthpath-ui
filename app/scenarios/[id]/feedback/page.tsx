@@ -12,33 +12,74 @@ interface PageProps {
 }
 
 function calcScore(scenario: (typeof scenarios)[0], answers: { q: string[]; r: string[]; u: string; p: string[] }) {
-  const { categoryScores } = scenario;
-
-  // Adjust scores based on answers
   const correctQ = scenario.screeningQuestions.filter((q) => q.correct).map((q) => q.id);
   const qHits = answers.q.filter((id) => correctQ.includes(id)).length;
-  const qScore = Math.round((qHits / correctQ.length) * categoryScores.riskRecognition);
 
   const correctR = scenario.riskFactors.filter((r) => r.correct).map((r) => r.id);
   const rHits = answers.r.filter((id) => correctR.includes(id)).length;
-  const rScore = Math.round((rHits / correctR.length) * categoryScores.urgencyJudgment);
-
-  const urgencyScore = answers.u === scenario.correctUrgency ? categoryScores.urgencyJudgment : Math.round(categoryScores.urgencyJudgment * 0.4);
 
   const correctP = scenario.referralPathways.filter((p) => p.correct).map((p) => p.id);
   const pHits = answers.p.filter((id) => correctP.includes(id)).length;
-  const pScore = Math.round((pHits / Math.max(correctP.length, 1)) * categoryScores.referralFit);
 
-  const overall = Math.min(100, Math.round((qScore + rScore + urgencyScore + pScore) / 4));
+  // Use categoryScores as max points per category and compute proportional earned scores
+  const { categoryScores } = scenario;
+  const riskRecognition = Math.round((rHits / Math.max(correctR.length, 1)) * categoryScores.riskRecognition);
+  const urgencyJudgment = answers.u === scenario.correctUrgency
+    ? categoryScores.urgencyJudgment
+    : Math.round(categoryScores.urgencyJudgment * 0.4);
+  const referralFit = Math.round((pHits / Math.max(correctP.length, 1)) * categoryScores.referralFit);
+
+  // Language/Communication: check if language-access risk factor AND/OR bilingual pathway selected
+  const languageRiskIds = scenario.riskFactors
+    .filter((r) => r.correct && /language|communication|bilingual/i.test(r.label))
+    .map((r) => r.id);
+  const languagePathwayIds = scenario.referralPathways
+    .filter((p) => p.correct && /bilingual|language|interpreter/i.test(p.label))
+    .map((p) => p.id);
+  const languageHit =
+    languageRiskIds.some((id) => answers.r.includes(id)) ||
+    languagePathwayIds.some((id) => answers.p.includes(id));
+  const communicationLanguage = languageHit
+    ? categoryScores.communicationLanguage
+    : Math.round(categoryScores.communicationLanguage * 0.3);
+
+  // Safety: check insulin/medication storage risk
+  const safetyRiskIds = scenario.riskFactors
+    .filter((r) => r.correct && /insulin|medication|storage|safety|suicid|firearm|lethal/i.test(r.label))
+    .map((r) => r.id);
+  const safetyHit = safetyRiskIds.length === 0 || safetyRiskIds.some((id) => answers.r.includes(id));
+  const safetyAwareness = safetyHit
+    ? categoryScores.safetyAwareness
+    : Math.round(categoryScores.safetyAwareness * 0.4);
+
+  const maxPoints =
+    categoryScores.riskRecognition +
+    categoryScores.urgencyJudgment +
+    categoryScores.referralFit +
+    categoryScores.communicationLanguage +
+    categoryScores.safetyAwareness;
+  const earnedPoints = riskRecognition + urgencyJudgment + referralFit + communicationLanguage + safetyAwareness;
+  const overall = Math.min(100, Math.round((earnedPoints / maxPoints) * 100));
+
+  // Compute missed items dynamically from unselected correct risk factors and referral pathways
+  const missedRisks = scenario.riskFactors
+    .filter((r) => r.correct && !answers.r.includes(r.id))
+    .map((r) => `Risk factor not identified: ${r.label}`);
+  const missedPathways = scenario.referralPathways
+    .filter((p) => p.correct && !answers.p.includes(p.id))
+    .map((p) => `Referral not selected: ${p.label}`);
+  const dynamicMissed = [...missedRisks, ...missedPathways];
+  const missed = dynamicMissed.length > 0 ? dynamicMissed : scenario.feedback.missed;
 
   return {
     overall,
+    missed,
     categories: [
-      { label: "Risk Recognition", score: qScore },
-      { label: "Urgency Judgment", score: urgencyScore },
-      { label: "Referral Fit", score: pScore },
-      { label: "Communication & Language Access", score: categoryScores.communicationLanguage },
-      { label: "Safety Awareness", score: categoryScores.safetyAwareness },
+      { label: "Risk Recognition", score: riskRecognition, max: categoryScores.riskRecognition },
+      { label: "Urgency Judgment", score: urgencyJudgment, max: categoryScores.urgencyJudgment },
+      { label: "Referral Fit", score: referralFit, max: categoryScores.referralFit },
+      { label: "Communication & Language Access", score: communicationLanguage, max: categoryScores.communicationLanguage },
+      { label: "Safety Awareness", score: safetyAwareness, max: categoryScores.safetyAwareness },
     ],
   };
 }
@@ -56,7 +97,7 @@ export default async function FeedbackPage({ params, searchParams }: PageProps) 
     p: sp.p ? sp.p.split(",").filter(Boolean) : [],
   };
 
-  const { overall, categories } = calcScore(scenario, answers);
+  const { overall, categories, missed } = calcScore(scenario, answers);
   const { feedback } = scenario;
 
   const scoreColor =
@@ -101,19 +142,19 @@ export default async function FeedbackPage({ params, searchParams }: PageProps) 
               <h2 className="font-serif font-bold text-base text-foreground">Category Scores</h2>
             </div>
             <div className="p-6 flex flex-col gap-4">
-              {categories.map(({ label, score }) => (
+              {categories.map(({ label, score, max }) => (
                 <div key={label}>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-sm font-medium text-foreground">{label}</span>
-                    <span className="text-sm font-bold text-foreground">{score}</span>
+                    <span className="text-sm font-bold text-foreground">{score}<span className="text-muted-foreground font-normal text-xs">/{max}</span></span>
                   </div>
-                  <div className="w-full bg-secondary rounded-full h-2.5 overflow-hidden" role="progressbar" aria-valuenow={score} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
+                  <div className="w-full bg-secondary rounded-full h-2.5 overflow-hidden" role="progressbar" aria-valuenow={score} aria-valuemin={0} aria-valuemax={max} aria-label={label}>
                     <div
                       className={cn(
                         "h-full rounded-full transition-all",
-                        score >= 80 ? "bg-accent" : score >= 60 ? "bg-yellow-400" : "bg-red-400"
+                        score / max >= 0.8 ? "bg-accent" : score / max >= 0.6 ? "bg-yellow-400" : "bg-red-400"
                       )}
-                      style={{ width: `${score}%` }}
+                      style={{ width: `${Math.round((score / max) * 100)}%` }}
                     />
                   </div>
                 </div>
@@ -132,7 +173,7 @@ export default async function FeedbackPage({ params, searchParams }: PageProps) 
             <FeedbackPanel
               icon={<XCircle className="w-5 h-5 text-red-500" />}
               title="What you missed"
-              items={feedback.missed}
+              items={missed}
               variant="negative"
             />
           </div>
