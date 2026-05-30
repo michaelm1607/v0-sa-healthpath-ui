@@ -334,7 +334,7 @@ export const scenarios: Scenario[] = [
     },
   },
   {
-    id: "language-maternal",
+    id: "language-access-maternal-health",
     title: "Language Access & Maternal Health",
     summary:
       "A recently arrived Spanish-speaking immigrant in the third trimester has had no prenatal care and faces documentation-related fears about seeking services.",
