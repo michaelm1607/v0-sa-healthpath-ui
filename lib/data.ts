@@ -163,30 +163,32 @@ export const scenarios: Scenario[] = [
       { id: "rp1", label: "San Antonio Food Bank – Mobile Pantry", category: "Food Access", correct: true },
       { id: "rp2", label: "VIA Metropolitan Transit – Mobility on Demand", category: "Transportation", correct: true },
       { id: "rp3", label: "CHCS – Community Pediatric Clinic", category: "Pediatric Health", correct: true },
-      { id: "rp4", label: "Behavioral Health Crisis Line", category: "Mental Health", correct: false },
-      { id: "rp5", label: "CPS Energy Low-Income Assistance", category: "Utility Assistance", correct: false },
+      { id: "rp4", label: "SNAP enrollment / benefits eligibility check", category: "Benefits", correct: true },
+      { id: "rp5", label: "Summer learning / community literacy program referral", category: "Child Development", correct: true },
+      { id: "rp6", label: "Behavioral Health Crisis Line", category: "Mental Health", correct: false },
+      { id: "rp7", label: "CPS Energy Low-Income Assistance", category: "Utility Assistance", correct: false },
     ],
     feedback: {
       recognized: [
         "Transportation as a structural barrier to care",
         "Summer food gap for school-age children",
         "Need to reconnect children with pediatric care",
+        "SNAP eligibility to increase food access benefits",
+        "Summer learning programs to reduce developmental risk during school break",
       ],
-      missed: [
-        "Summer Learning Loss – community literacy programs can reduce developmental risk",
-        "SNAP enrollment check – family may be eligible for benefit increase",
-      ],
+      // 'missed' is computed dynamically from unselected correct options — this array is a fallback only.
+      missed: [],
       strongerPathway:
-        "Connect family to SA Food Bank mobile pantry, link to VIA Mobility on Demand for medical appointments, and schedule catch-up well-child visits.",
+        "Connect the family to SA Food Bank mobile pantry and confirm SNAP eligibility, link to VIA Mobility on Demand for medical and program appointments, schedule catch-up well-child visits at CHCS, and enroll children in a summer literacy program.",
       whyItMatters:
-        "Missed pediatric visits mean missed immunizations and developmental screenings. Transportation and food security together determine whether children enter school healthy.",
+        "Missed pediatric visits mean missed immunizations and developmental screenings. Transportation and food security together determine whether children enter school healthy. Summer learning programs protect against developmental regression during school breaks.",
     },
     categoryScores: {
-      riskRecognition: 80,
-      urgencyJudgment: 85,
-      referralFit: 88,
-      communicationLanguage: 70,
-      safetyAwareness: 72,
+      riskRecognition: 25,
+      urgencyJudgment: 20,
+      referralFit: 20,
+      communicationLanguage: 10,
+      safetyAwareness: 15,
     },
   },
   {
