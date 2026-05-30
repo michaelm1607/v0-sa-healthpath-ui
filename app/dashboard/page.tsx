@@ -1,30 +1,85 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { scenarios } from "@/lib/data";
+import { loadResults, type ScenarioResult } from "@/lib/results-store";
 import { cn } from "@/lib/utils";
 import { RotateCcw, ArrowRight, Award, Target, TrendingUp, CheckCircle2, BarChart3 } from "lucide-react";
 
-// Simulated aggregate scores (placeholder data)
-const completedIds = ["heat-risk", "food-transport"];
-const completedScenarios = scenarios.filter((s) => completedIds.includes(s.id));
+const CATEGORY_DESCS: Record<string, string> = {
+  "Risk Recognition": "Identifying clinical and social risk factors",
+  "Urgency Judgment": "Assessing case severity and timeline",
+  "Referral Fit": "Matching residents to appropriate services",
+  "Communication & Language Access": "Considering language and cultural needs",
+  "Safety Awareness": "Recognizing safety concerns and crisis indicators",
+};
 
-const aggregateCategories = [
-  { label: "Risk Recognition", score: 82, desc: "Identifying clinical and social risk factors" },
-  { label: "Urgency Judgment", score: 87, desc: "Assessing case severity and timeline" },
-  { label: "Referral Fit", score: 79, desc: "Matching residents to appropriate services" },
-  { label: "Communication & Language Access", score: 62, desc: "Considering language and cultural needs" },
-  { label: "Safety Awareness", score: 84, desc: "Recognizing safety concerns and crisis indicators" },
-];
+/** Aggregate category scores across all completed results (simple average by label). */
+function aggregateCategories(results: ScenarioResult[]) {
+  if (results.length === 0) return [];
 
-const overallReadiness = Math.round(
-  aggregateCategories.reduce((acc, c) => acc + c.score, 0) / aggregateCategories.length
-);
+  // Collect all unique category labels in order from first result
+  const labels = results[0].categories.map((c) => c.label);
 
-const strongest = [...aggregateCategories].sort((a, b) => b.score - a.score)[0];
-const weakest = [...aggregateCategories].sort((a, b) => a.score - b.score)[0];
+  return labels.map((label) => {
+    const entries = results.flatMap((r) => r.categories.filter((c) => c.label === label));
+    if (entries.length === 0) return { label, score: 0, max: 0 };
+    const totalEarned = entries.reduce((sum, e) => sum + e.score, 0);
+    const totalMax = entries.reduce((sum, e) => sum + e.max, 0);
+    // Express as 0-100 percentage for cross-scenario comparison
+    const score = totalMax > 0 ? Math.round((totalEarned / totalMax) * 100) : 0;
+    return { label, score, desc: CATEGORY_DESCS[label] ?? "" };
+  });
+}
 
 export default function DashboardPage() {
+  const [results, setResults] = useState<ScenarioResult[]>([]);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setResults(loadResults());
+    setHydrated(true);
+  }, []);
+
+  const completedIds = results.map((r) => r.scenarioId);
+  const completedScenarios = scenarios.filter((s) => completedIds.includes(s.id));
+
+  const aggregateCategories_ = aggregateCategories(results);
+
+  const overallReadiness =
+    results.length > 0
+      ? Math.round(results.reduce((sum, r) => sum + r.finalScore, 0) / results.length)
+      : 0;
+
+  const strongest =
+    aggregateCategories_.length > 0
+      ? [...aggregateCategories_].sort((a, b) => b.score - a.score)[0]
+      : null;
+  const weakest =
+    aggregateCategories_.length > 0
+      ? [...aggregateCategories_].sort((a, b) => a.score - b.score)[0]
+      : null;
+
+  // Sort recent results newest-first
+  const recentResults = [...results].sort(
+    (a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
+  );
+
+  // Placeholder categories for pre-completion state
+  const displayCategories =
+    aggregateCategories_.length > 0
+      ? aggregateCategories_
+      : [
+          { label: "Risk Recognition", score: 0, desc: CATEGORY_DESCS["Risk Recognition"] },
+          { label: "Urgency Judgment", score: 0, desc: CATEGORY_DESCS["Urgency Judgment"] },
+          { label: "Referral Fit", score: 0, desc: CATEGORY_DESCS["Referral Fit"] },
+          { label: "Communication & Language Access", score: 0, desc: CATEGORY_DESCS["Communication & Language Access"] },
+          { label: "Safety Awareness", score: 0, desc: CATEGORY_DESCS["Safety Awareness"] },
+        ];
+
   return (
     <div className="min-h-screen flex flex-col">
       <SiteHeader />
@@ -39,7 +94,7 @@ export default function DashboardPage() {
               Your Readiness Dashboard
             </h1>
             <p className="mt-3 text-muted-foreground text-sm leading-relaxed max-w-2xl">
-              Track your public-health navigation competencies across all completed scenarios. 
+              Track your public-health navigation competencies across all completed scenarios.
               Complete more cases to build a comprehensive picture of your strengths and areas for growth.
             </p>
           </div>
@@ -49,27 +104,27 @@ export default function DashboardPage() {
             <StatCard
               icon={<Award className="w-5 h-5 text-primary-foreground" aria-hidden="true" />}
               label="Readiness Score"
-              value={`${overallReadiness}`}
+              value={hydrated ? `${overallReadiness}` : "—"}
               sub="out of 100"
               variant="primary"
             />
             <StatCard
               icon={<CheckCircle2 className="w-5 h-5 text-accent" aria-hidden="true" />}
               label="Cases Completed"
-              value={`${completedScenarios.length}`}
+              value={hydrated ? `${completedScenarios.length}` : "—"}
               sub={`of ${scenarios.length} scenarios`}
             />
             <StatCard
               icon={<TrendingUp className="w-5 h-5 text-green-600" aria-hidden="true" />}
               label="Strongest Area"
-              value={strongest.score.toString()}
-              sub={strongest.label}
+              value={hydrated && strongest ? strongest.score.toString() : "—"}
+              sub={strongest?.label ?? "Complete a case to see"}
             />
             <StatCard
               icon={<Target className="w-5 h-5 text-amber-600" aria-hidden="true" />}
               label="Focus Area"
-              value={weakest.score.toString()}
-              sub={weakest.label}
+              value={hydrated && weakest ? weakest.score.toString() : "—"}
+              sub={weakest?.label ?? "Complete a case to see"}
             />
           </div>
 
@@ -94,7 +149,7 @@ export default function DashboardPage() {
               </span>
             </div>
             <div className="p-6 flex flex-col gap-5">
-              {aggregateCategories.map(({ label, score, desc }) => (
+              {displayCategories.map(({ label, score, desc }) => (
                 <div key={label}>
                   <div className="flex items-start sm:items-center justify-between mb-2 gap-2">
                     <div>
@@ -102,19 +157,21 @@ export default function DashboardPage() {
                       <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">{desc}</p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className="text-sm font-bold text-foreground tabular-nums">{score}</span>
-                      <span
-                        className={cn(
-                          "text-xs px-2 py-0.5 rounded-full font-medium",
-                          score >= 80
-                            ? "bg-green-100 text-green-700"
-                            : score >= 60
-                            ? "bg-amber-100 text-amber-700"
-                            : "bg-red-100 text-red-700"
-                        )}
-                      >
-                        {score >= 80 ? "Proficient" : score >= 60 ? "Developing" : "Needs Work"}
-                      </span>
+                      <span className="text-sm font-bold text-foreground tabular-nums">{hydrated ? score : "—"}</span>
+                      {hydrated && score > 0 && (
+                        <span
+                          className={cn(
+                            "text-xs px-2 py-0.5 rounded-full font-medium",
+                            score >= 80
+                              ? "bg-green-100 text-green-700"
+                              : score >= 60
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-red-100 text-red-700"
+                          )}
+                        >
+                          {score >= 80 ? "Proficient" : score >= 60 ? "Developing" : "Needs Work"}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div
@@ -128,13 +185,18 @@ export default function DashboardPage() {
                     <div
                       className={cn(
                         "h-full rounded-full transition-all duration-500",
-                        score >= 80 ? "bg-accent" : score >= 60 ? "bg-amber-400" : "bg-red-400"
+                        score >= 80 ? "bg-accent" : score >= 60 ? "bg-amber-400" : score > 0 ? "bg-red-400" : "bg-border"
                       )}
                       style={{ width: `${score}%` }}
                     />
                   </div>
                 </div>
               ))}
+              {hydrated && results.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center pt-2">
+                  Complete your first scenario to populate this breakdown.
+                </p>
+              )}
             </div>
           </div>
 
@@ -146,41 +208,37 @@ export default function DashboardPage() {
                 Review your past performance or replay to improve your score
               </p>
             </div>
-            {completedScenarios.length > 0 ? (
+            {hydrated && recentResults.length > 0 ? (
               <ul className="divide-y divide-border">
-                {completedScenarios.map((s) => {
-                  const avgScore = Math.round(
-                    Object.values(s.categoryScores).reduce((a, b) => a + b, 0) /
-                      Object.values(s.categoryScores).length
-                  );
-                  return (
-                    <li key={s.id} className="px-6 py-4 flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">{s.title}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {s.difficulty} &middot; {s.estimatedMinutes} min
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-4 flex-shrink-0">
-                        <span className="text-sm font-bold text-foreground tabular-nums">
-                          {avgScore}
-                          <span className="text-muted-foreground font-normal">/100</span>
-                        </span>
-                        <Link
-                          href={`/scenarios/${s.id}`}
-                          className="text-xs text-primary font-semibold flex items-center gap-1 hover:underline"
-                        >
-                          <RotateCcw className="w-3 h-3" aria-hidden="true" />
-                          Replay
-                        </Link>
-                      </div>
-                    </li>
-                  );
-                })}
+                {recentResults.map((r) => (
+                  <li key={r.scenarioId} className="px-6 py-4 flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{r.scenarioTitle}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {r.readinessLevel} &middot; Completed {new Date(r.completedAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-4 flex-shrink-0">
+                      <span className="text-sm font-bold text-foreground tabular-nums">
+                        {r.finalScore}
+                        <span className="text-muted-foreground font-normal">/100</span>
+                      </span>
+                      <Link
+                        href={`/scenarios/${r.scenarioId}`}
+                        className="text-xs text-primary font-semibold flex items-center gap-1 hover:underline"
+                      >
+                        <RotateCcw className="w-3 h-3" aria-hidden="true" />
+                        Replay
+                      </Link>
+                    </div>
+                  </li>
+                ))}
               </ul>
             ) : (
               <div className="px-6 py-8 text-center">
-                <p className="text-sm text-muted-foreground">No scenarios completed yet.</p>
+                <p className="text-sm text-muted-foreground">
+                  {hydrated ? "No scenarios completed yet." : "Loading…"}
+                </p>
               </div>
             )}
           </div>
@@ -193,33 +251,41 @@ export default function DashboardPage() {
                 Complete more cases to build your readiness profile
               </p>
             </div>
-            <ul className="divide-y divide-border">
-              {scenarios
-                .filter((s) => !completedIds.includes(s.id))
-                .map((s) => (
-                  <li key={s.id} className="px-6 py-4 flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{s.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {s.difficulty} &middot; {s.estimatedMinutes} min
-                      </p>
-                    </div>
-                    <Link
-                      href={`/scenarios/${s.id}`}
-                      className="flex items-center gap-1.5 text-xs text-primary-foreground bg-primary font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity flex-shrink-0"
-                    >
-                      Begin Case
-                      <ArrowRight className="w-3 h-3" aria-hidden="true" />
-                    </Link>
-                  </li>
-                ))}
-            </ul>
+            {scenarios.filter((s) => !completedIds.includes(s.id)).length > 0 ? (
+              <ul className="divide-y divide-border">
+                {scenarios
+                  .filter((s) => !completedIds.includes(s.id))
+                  .map((s) => (
+                    <li key={s.id} className="px-6 py-4 flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{s.title}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {s.difficulty} &middot; {s.estimatedMinutes} min
+                        </p>
+                      </div>
+                      <Link
+                        href={`/scenarios/${s.id}`}
+                        className="flex items-center gap-1.5 text-xs text-primary-foreground bg-primary font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity flex-shrink-0"
+                      >
+                        Begin Case
+                        <ArrowRight className="w-3 h-3" aria-hidden="true" />
+                      </Link>
+                    </li>
+                  ))}
+              </ul>
+            ) : (
+              <div className="px-6 py-8 text-center">
+                <p className="text-sm text-muted-foreground font-medium">
+                  All scenarios completed. Replay any case to improve your score.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Action buttons */}
           <div className="flex flex-col sm:flex-row gap-3">
             <Link
-              href={`/scenarios/${completedScenarios[completedScenarios.length - 1]?.id || scenarios[0].id}`}
+              href={recentResults[0] ? `/scenarios/${recentResults[0].scenarioId}` : scenarios[0].id ? `/scenarios/${scenarios[0].id}` : "/scenarios"}
               className="flex items-center justify-center gap-2 flex-1 border border-border bg-card text-foreground font-semibold py-3 rounded-lg text-sm hover:bg-secondary transition-colors"
             >
               <RotateCcw className="w-4 h-4" aria-hidden="true" />

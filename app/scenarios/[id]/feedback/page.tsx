@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
+import { SaveResult } from "@/components/save-result";
 import { scenarios } from "@/lib/data";
 import { cn } from "@/lib/utils";
 import { CheckCircle2, XCircle, ArrowRight, RotateCcw, TrendingUp } from "lucide-react";
@@ -109,6 +110,13 @@ export default async function FeedbackPage({ params, searchParams }: PageProps) 
     <div className="min-h-screen flex flex-col">
       <SiteHeader />
       <main className="flex-1 bg-background py-10 px-4">
+        {/* Persist result to localStorage on mount */}
+        <SaveResult
+          scenarioId={scenario.id}
+          scenarioTitle={scenario.title}
+          finalScore={overall}
+          categories={categories}
+        />
         <div className="max-w-3xl mx-auto flex flex-col gap-8">
           {/* Header */}
           <div>
