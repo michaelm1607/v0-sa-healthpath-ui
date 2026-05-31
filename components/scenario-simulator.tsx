@@ -82,7 +82,7 @@ export function ScenarioSimulator({ scenario }: { scenario: Scenario }) {
       </div>
 
       {/* Step content */}
-      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-card border border-border rounded-xl shadow-sm">
         {currentStep === "Review Case" && <ReviewCaseStep scenario={scenario} />}
         {currentStep === "Ask Questions" && (
           <AskQuestionsStep
@@ -156,7 +156,7 @@ function StepHeader({
   hint?: string;
 }) {
   return (
-    <div className="px-6 py-5 border-b border-border bg-secondary/30">
+    <div className="px-6 py-5 border-b border-border bg-secondary/30 rounded-t-xl">
       <div className="flex items-start gap-4">
         <span className="w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-bold flex items-center justify-center flex-shrink-0">
           {stepNumber}
@@ -374,7 +374,7 @@ function IdentifyRisksStep({
         hint={`${selected.length} risk factor${selected.length !== 1 ? "s" : ""} identified`}
       />
       <div className="p-6">
-        <ul className="grid sm:grid-cols-2 gap-2.5">
+        <ul className="flex flex-col gap-2.5">
           {scenario.riskFactors.map((rf) => {
             const isSelected = selected.includes(rf.id);
             return (
@@ -457,7 +457,7 @@ function AssignUrgencyStep({
         description="Based on the risk factors you identified, determine how quickly this resident needs intervention."
       />
       <div className="p-6">
-        <div className="grid sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {levels.map(({ urgency, timeline, description }) => {
             const isSelected = selected === urgency;
             return (
