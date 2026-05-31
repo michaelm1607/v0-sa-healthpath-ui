@@ -239,8 +239,9 @@ export const scenarios: Scenario[] = [
       { id: "rp1", label: "SAMMinistries – Emergency Housing Assistance", category: "Housing", correct: true, rationale: "Provides emergency shelter and transitional housing for families displaced by eviction." },
       { id: "rp2", label: "BCFS – Tenant Rights Navigation", category: "Legal Aid", correct: true, rationale: "Legal aid can stop or delay the eviction, directly addressing the immediate housing instability." },
       { id: "rp3", label: "University Health – Pediatric Asthma Clinic", category: "Pediatric Health", correct: true, rationale: "Two ER visits in 30 days indicates uncontrolled asthma requiring specialist management, not just ER visits." },
-      { id: "rp4", label: "SA Food Bank", category: "Food Access", correct: false, rationale: "Food insecurity is not described in this case. Selecting unsupported referrals dilutes the quality of the care plan." },
-      { id: "rp5", label: "Goodwill Employment Services", category: "Employment", correct: false, rationale: "Employment is not relevant to the immediate housing and pediatric health crisis in this case." },
+      { id: "rp4", label: "Bilingual housing and health navigation (Spanish)", category: "Language Access", correct: true, rationale: "Spanish-primary communication requires a bilingual navigator to ensure Ms. Torres understands her housing rights, medical options, and available resources." },
+      { id: "rp5", label: "SA Food Bank", category: "Food Access", correct: false, rationale: "Food insecurity is not described in this case. Selecting unsupported referrals dilutes the quality of the care plan." },
+      { id: "rp6", label: "Goodwill Employment Services", category: "Employment", correct: false, rationale: "Employment is not relevant to the immediate housing and pediatric health crisis in this case." },
     ],
     feedback: {
       recognized: [
